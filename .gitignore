@@ -35,3 +35,9 @@ venv/
 rawdata/famic/*.csv
 rawdata/famic_*.zip
 rawdata/mechanism_rac.xlsx
+
+# iOS / Xcode ビルド成果物
+ios/build/
+ios/DerivedData/
+**/xcuserdata/
+**/*.xcuserstate
