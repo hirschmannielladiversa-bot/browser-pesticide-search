@@ -278,7 +278,13 @@ function renderResults(groups, productCount) {
 
 function renderGroupCard(g) {
   const rep = g.products.find(p => p.status !== "失効") || g.products[0];
-  const cats = rep.categories || [rep.category];
+  // グループ内の全商品のカテゴリを和集合 (殺虫殺菌両用剤や混在グループの正確な表示)
+  const catOrder = ["殺虫剤", "殺菌剤", "除草剤"];
+  const catSet = new Set();
+  for (const p of g.products) {
+    for (const c of (p.categories || [p.category])) catSet.add(c);
+  }
+  const cats = catOrder.filter(c => catSet.has(c));
   const ingBadges = rep.ingredients.map(i => {
     return `<span class="badge ingredient">${escapeHtml(i.name)}${racBadgesHtml(i, cats)}</span>`;
   }).join("");
@@ -332,7 +338,12 @@ async function openGroupDetail(typeName) {
   await loadApplications();
 
   const rep = g.products.find(p => p.status !== "失効") || g.products[0];
-  const cats = rep.categories || [rep.category];
+  const catOrder = ["殺虫剤", "殺菌剤", "除草剤"];
+  const catSet = new Set();
+  for (const p of g.products) {
+    for (const c of (p.categories || [p.category])) catSet.add(c);
+  }
+  const cats = catOrder.filter(c => catSet.has(c));
   const catBadges = cats.map(c => `<span class="badge category-${c}">${c}</span>`).join(" ");
   const ingRows = rep.ingredients.map(i => {
     const racEl = racBadgesHtml(i, cats);

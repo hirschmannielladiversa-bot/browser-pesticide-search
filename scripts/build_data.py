@@ -92,6 +92,34 @@ def pick_categories(yoto):
     return cats
 
 
+# 用途名・種類名が FAMIC 表記と実際の作用機序で乖離する剤を上書き分類する。
+# キーは type_name (基本部) または original_category 用途欄の文字列。
+# 値は ["殺虫剤", "殺菌剤"] のような正規分類。pick_categories で得た結果を上書きする。
+TYPE_NAME_CATEGORY_OVERRIDE = {
+    # 硫黄系: 殺ダニ・カイガラムシ防除に使われる殺虫殺菌両作用剤
+    "石灰硫黄合剤": ["殺虫剤", "殺菌剤"],
+    "硫黄合剤": ["殺虫剤", "殺菌剤"],
+    "水和硫黄剤": ["殺虫剤", "殺菌剤"],
+    # 松脂合剤: カイガラムシ防除を主目的とする殺虫殺菌剤
+    "松脂合剤": ["殺虫剤", "殺菌剤"],
+    # マシン油剤: 殺ダニ・カイガラムシ防除の殺虫剤として登録 (殺菌作用は副次)
+    # ボルドー液: 殺菌剤 (修正なし)
+}
+
+
+def apply_category_override(type_name, categories):
+    """type_name が上書きマップに含まれていれば上書き分類を返す。"""
+    if not type_name:
+        return categories
+    if type_name in TYPE_NAME_CATEGORY_OVERRIDE:
+        return list(TYPE_NAME_CATEGORY_OVERRIDE[type_name])
+    # 末尾一致 (例: "サンケイ石灰硫黄合剤" は商品名なので使わない、type_name のみ対象)
+    for key, val in TYPE_NAME_CATEGORY_OVERRIDE.items():
+        if type_name == key:
+            return list(val)
+    return categories
+
+
 # 失効剤の旧農薬成分名からカテゴリを推定する補助テーブル（殺虫/殺菌/除草 が種類名に含まれない場合用）
 LEGACY_CATEGORY_HINTS = {
     "殺虫剤": [
@@ -464,6 +492,7 @@ def build():
 
     for reg_no, b in sorted(basic.items()):
         categories = pick_categories(b["category"])
+        categories = apply_category_override(b["type_name"], categories)
         if not categories:
             continue  # 殺そ剤・植物成長調整剤など除外
 
@@ -506,6 +535,7 @@ def build():
             continue  # 現役剤と重複はスキップ
 
         cats = pick_categories_with_legacy(c["type_name"], c["product_name"])
+        cats = apply_category_override(c["type_name"], cats)
         if not cats:
             continue  # 殺虫/殺菌/除草 のいずれにも属さないもの（殺そ剤、植調剤等）は除外
 
