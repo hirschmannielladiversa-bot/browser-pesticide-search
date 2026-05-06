@@ -5,7 +5,7 @@
  * - 全て正規化後の部分一致
  */
 
-import { normalize, normalizeRacQuery } from "./normalize.js";
+import { normalize, normalizeRacQuery, expandSearchableCrops } from "./normalize.js";
 
 /**
  * 検索インデックス構築
@@ -26,8 +26,12 @@ export function buildIndex(products, applications) {
     const cropSet = new Set();
     const pestSet = new Set();
     for (const a of entries) {
-      if (a.crop) cropSet.add(normalize(a.crop));
-      if (a.place) cropSet.add(normalize(a.place));
+      if (a.crop) {
+        for (const c of expandSearchableCrops(a.crop)) cropSet.add(normalize(c));
+      }
+      if (a.place) {
+        for (const c of expandSearchableCrops(a.place)) cropSet.add(normalize(c));
+      }
       if (a.pest) pestSet.add(normalize(a.pest));
     }
     const norm_crops = [...cropSet].join("|");

@@ -4,7 +4,7 @@
 
 import { buildIndex, search } from "./core/search.js";
 import { applyFilters, DEFAULT_FILTERS, countFormulations } from "./core/filter.js";
-import { normalize } from "./core/normalize.js";
+import { normalize, expandSearchableCrops, splitRacCode } from "./core/normalize.js";
 import { exportTSV, exportCSV, exportMarkdown, exportJSON, download } from "./io/export.js";
 import { loadApplications, getApplicationsFor } from "./io/applications.js";
 
@@ -14,6 +14,20 @@ const RAC_STATUS_LABEL = {
   legacy: "古典未分類",
   recent: "新規未収録",
 };
+
+// IRAC/FRAC/HRAC 別バッジ HTML を生成。コードが無く rac_status のみある場合は status バッジを返す。
+function racBadgesHtml(ingredient, categories) {
+  const split = splitRacCode(ingredient.rac_code, categories || []);
+  const parts = [];
+  if (split.I.length) parts.push(`<span class="badge rac-irac">IRAC: ${split.I.map(escapeHtml).join(", ")}</span>`);
+  if (split.F.length) parts.push(`<span class="badge rac-frac">FRAC: ${split.F.map(escapeHtml).join(", ")}</span>`);
+  if (split.H.length) parts.push(`<span class="badge rac-hrac">HRAC: ${split.H.map(escapeHtml).join(", ")}</span>`);
+  if (parts.length === 0 && ingredient.rac_status) {
+    const label = RAC_STATUS_LABEL[ingredient.rac_status] || "未分類";
+    parts.push(`<span class="badge rac-${ingredient.rac_status}" title="${escapeHtml(ingredient.rac_reason || '')}">${label}</span>`);
+  }
+  return parts.length ? " " + parts.join(" ") : "";
+}
 
 // グローバル状態
 const state = {
@@ -80,10 +94,16 @@ function attachCropsPests(products, applications) {
     const pests = new Set();
     for (const a of entries) {
       if (a.crop) {
-        crops.add(normalize(a.crop));
+        for (const expanded of expandSearchableCrops(a.crop)) {
+          crops.add(normalize(expanded));
+        }
         cropCount.set(a.crop, (cropCount.get(a.crop) || 0) + 1);
       }
-      if (a.place) crops.add(normalize(a.place));
+      if (a.place) {
+        for (const expanded of expandSearchableCrops(a.place)) {
+          crops.add(normalize(expanded));
+        }
+      }
       if (a.pest) {
         pests.add(normalize(a.pest));
         pestCount.set(a.pest, (pestCount.get(a.pest) || 0) + 1);
@@ -257,14 +277,11 @@ function renderResults(results) {
 }
 
 function renderCard(p) {
+  const cats = p.categories || [p.category];
   const ingBadges = p.ingredients.map(i => {
-    const racBadge = i.rac_code
-      ? ` <span class="badge rac">${i.rac_code}</span>`
-      : (i.rac_status ? ` <span class="badge rac-${i.rac_status}" title="${escapeHtml(i.rac_reason || '')}">${RAC_STATUS_LABEL[i.rac_status] || '未分類'}</span>` : "");
-    return `<span class="badge ingredient">${escapeHtml(i.name)}${racBadge}</span>`;
+    return `<span class="badge ingredient">${escapeHtml(i.name)}${racBadgesHtml(i, cats)}</span>`;
   }).join("");
   const householdBadge = p.household ? `<span class="badge household">家庭向け</span>` : "";
-  const cats = p.categories || [p.category];
   const catBadges = cats.map(c => `<span class="badge category-${c}">${c}</span>`).join(" ");
   const isCancelled = p.status === "失効";
   const statusBadge = isCancelled
@@ -301,22 +318,18 @@ async function openDetail(regNo) {
   await loadApplications();
   const apps = getApplicationsFor(regNo) || [];
 
+  const detailCatsArr = p.categories || [p.category];
   const ingRows = p.ingredients.map(i => {
-    let racEl = "";
-    if (i.rac_code) {
-      racEl = ` <span class="badge rac">${escapeHtml(i.rac_code)}</span>`;
-    } else if (i.rac_status) {
-      const label = RAC_STATUS_LABEL[i.rac_status] || "未分類";
-      const reason = i.rac_reason ? ` <span class="rac-reason">(${escapeHtml(i.rac_reason)})</span>` : "";
-      racEl = ` <span class="badge rac-${i.rac_status}" title="${escapeHtml(i.rac_reason || '')}">${label}</span>${reason}`;
-    }
+    const racEl = racBadgesHtml(i, detailCatsArr);
+    const reason = (!i.rac_code && i.rac_status && i.rac_reason)
+      ? ` <span class="rac-reason">(${escapeHtml(i.rac_reason)})</span>` : "";
     return `
     <div class="detail-field">
       <span class="label">成分</span>
       <span class="value">
         ${escapeHtml(i.name)}
         ${i.density ? ` <span class="badge">${escapeHtml(i.density)}</span>` : ""}
-        ${racEl}
+        ${racEl}${reason}
       </span>
     </div>`;
   }).join("");

@@ -142,6 +142,9 @@
     margin: 0 2px;
   }
   .b-rac { background: #e0e7ff; color: #4338ca; font-family: monospace; }
+  .b-rac-irac { background: #fef3c7; color: #b45309; font-family: monospace; font-weight: 600; }
+  .b-rac-frac { background: #dbeafe; color: #1e40af; font-family: monospace; font-weight: 600; }
+  .b-rac-hrac { background: #d1fae5; color: #047857; font-family: monospace; font-weight: 600; }
   .b-out { background: #f1f5f9; color: #64748b; }
   .b-legacy { background: #fef3c7; color: #92400e; }
   .b-recent { background: #dcfce7; color: #166534; }
@@ -256,18 +259,41 @@
   <p><strong>作物/病害虫を入力すると失効剤は自動で隠れます。</strong> 失効剤には適用情報（作物・病害虫）が無いためです。失効剤も見るには、これらの欄を空にしてください。</p>
 </div>
 
+<div class="callout info">
+  <p><strong>「○○を除く」括弧書きの作物は検索対象外 (Ver. 1.1 から)。</strong>
+  例えば登録上「かんきつ(なつみかんを除く)」とある剤は、サイドバーの「作物」欄に
+  <code>なつみかん</code> と入力してもヒットしません。
+  「みかん」が登録対象外の剤を、生産者に誤って案内してしまうリスクを防ぐためです。
+  「かんきつ」と入力すれば従来通りヒットします。</p>
+</div>
+
 <hr>
 
 <h2 id="badge">4. RAC バッジの見方</h2>
 
-<p>成分名の右隣に以下のいずれかのバッジが付きます。</p>
+<p>成分名の右隣に、用途分類ごとの RAC コードバッジが付きます (Ver. 1.1 から 3 分類別表示)。</p>
 
 <table>
   <tr><th>バッジ</th><th>意味</th><th>例</th></tr>
   <tr>
-    <td><span class="badge b-rac">4A</span> <span class="badge b-rac">M7</span></td>
-    <td>CropLife Japan 公式の RAC コード</td>
-    <td>イミダクロプリド (4A) / ジネブ (M3)</td>
+    <td><span class="badge b-rac-irac">IRAC: 4A</span></td>
+    <td>殺虫剤 (Insecticide) の作用機作分類</td>
+    <td>イミダクロプリド (IRAC: 4A ネオニコチノイド系)</td>
+  </tr>
+  <tr>
+    <td><span class="badge b-rac-frac">FRAC: M7</span></td>
+    <td>殺菌剤 (Fungicide) の作用機作分類</td>
+    <td>ジネブ (FRAC: M3) / シクロブタニル (FRAC: 3)</td>
+  </tr>
+  <tr>
+    <td><span class="badge b-rac-hrac">HRAC: 9</span></td>
+    <td>除草剤 (Herbicide) の作用機作分類</td>
+    <td>グリホサート (HRAC: 9) / グルホシネート (HRAC: 10)</td>
+  </tr>
+  <tr>
+    <td><span class="badge b-rac-irac">IRAC: UN</span> <span class="badge b-rac-frac">FRAC: M2</span></td>
+    <td>混合剤・殺虫殺菌剤などは複数分類のバッジが並びます</td>
+    <td>硫黄 (IRAC: UN, FRAC: M2)</td>
   </tr>
   <tr>
     <td><span class="badge b-out">対象外</span></td>

@@ -325,6 +325,9 @@ button.primary:hover { background: var(--accent-hover); }
 .badge.status-inactive { background: var(--status-inactive-bg); color: var(--status-inactive); }
 .badge.household { background: var(--warn-bg); color: var(--warn); }
 .badge.rac { background: #e0e7ff; color: #4338ca; font-family: monospace; font-weight: 600; }
+.badge.rac-irac { background: var(--cat-insect-bg); color: #b45309; font-family: monospace; font-weight: 600; }
+.badge.rac-frac { background: var(--cat-fungus-bg); color: #1e40af; font-family: monospace; font-weight: 600; }
+.badge.rac-hrac { background: var(--cat-herbicide-bg); color: #047857; font-family: monospace; font-weight: 600; }
 .badge.rac-out_of_scope { background: #f1f5f9; color: #64748b; font-size: 11px; font-weight: 500; cursor: help; }
 .badge.rac-legacy { background: #fef3c7; color: #92400e; font-size: 11px; font-weight: 500; cursor: help; }
 .badge.rac-recent { background: #dcfce7; color: #166534; font-size: 11px; font-weight: 500; cursor: help; }
@@ -332,6 +335,9 @@ button.primary:hover { background: var(--accent-hover); }
 
 @media (prefers-color-scheme: dark) {
   .badge.rac { background: #312e81; color: #c7d2fe; }
+  .badge.rac-irac { background: #451a03; color: #fed7aa; }
+  .badge.rac-frac { background: #1e3a8a; color: #bfdbfe; }
+  .badge.rac-hrac { background: #14532d; color: #a7f3d0; }
   .badge.rac-out_of_scope { background: #334155; color: #94a3b8; }
   .badge.rac-legacy { background: #78350f; color: #fde68a; }
   .badge.rac-recent { background: #14532d; color: #bbf7d0; }
