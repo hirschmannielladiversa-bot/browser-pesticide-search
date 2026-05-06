@@ -291,6 +291,20 @@ button.primary:hover { background: var(--accent-hover); }
   flex: 1;
 }
 
+.result-title-sub {
+  display: block;
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.detail-title-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 2px 0 6px;
+}
+
 .result-meta {
   display: flex;
   gap: 8px;
@@ -457,6 +471,24 @@ button.primary:hover { background: var(--accent-hover); }
 }
 
 .app-table tbody tr:hover { background: var(--bg); }
+
+/* ===== Group products table (種類名カードの内訳) ===== */
+.group-products-table tbody tr { cursor: pointer; }
+.group-products-table tbody tr.cancelled { opacity: 0.6; }
+.group-products-table tbody tr.cancelled td:first-child { text-decoration: line-through; color: var(--text-muted); }
+.group-products-table tbody tr.selected,
+.group-products-table tbody tr.selected:hover {
+  background: var(--status-active-bg);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.badge.ingredient-variant {
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 11px;
+  cursor: help;
+}
 
 /* ===== Empty / loading ===== */
 .empty, .loading {

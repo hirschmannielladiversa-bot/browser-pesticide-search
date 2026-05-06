@@ -4,7 +4,7 @@
 
 import { buildIndex, search } from "./core/search.js";
 import { applyFilters, DEFAULT_FILTERS, countFormulations } from "./core/filter.js";
-import { normalize, expandSearchableCrops, splitRacCode } from "./core/normalize.js";
+import { normalize, expandSearchableCrops, splitRacCode, stripCompanyFromName } from "./core/normalize.js";
 import { exportTSV, exportCSV, exportMarkdown, exportJSON, download } from "./io/export.js";
 import { loadApplications, getApplicationsFor } from "./io/applications.js";
 
@@ -40,6 +40,7 @@ const state = {
   },
   currentQuery: "",
   currentResults: [],
+  currentGroups: [],
   selectedFormulations: null,
   cropSuggestions: [],
   pestSuggestions: [],
@@ -59,15 +60,12 @@ async function init() {
   try {
     const dbRaw = window.PESTICIDES_DB || null;
     if (!dbRaw) {
-      // 開発版: fetch
       const res = await fetch("data/pesticides.json");
       state.db = await res.json();
     } else {
       state.db = dbRaw;
     }
 
-    // 適用部 (作物・病害虫) を先に読み込み、検索インデックスとフィルタに含める
-    // バンドル版は window.APPLICATIONS から瞬時にロード、開発版は fetch
     const apps = await loadApplications();
     attachCropsPests(state.db.products, apps);
     state.index = buildIndex(state.db.products, apps);
@@ -80,11 +78,6 @@ async function init() {
   }
 }
 
-/**
- * 各商品に _crops_norm / _pests_norm (正規化済み pipe 結合文字列) を付与。
- * filter.applyFilters で部分一致判定するため。
- * 副産物として、出現頻度順の作物名/病害虫名の配列もサイドバー datalist 用に生成。
- */
 function attachCropsPests(products, applications) {
   const cropCount = new Map();
   const pestCount = new Map();
@@ -117,14 +110,12 @@ function attachCropsPests(products, applications) {
 }
 
 function toReiwa(dateStr) {
-  // "2026-04-08" → "令和8年4月8日"、"2025-06" → "令和7年6月"
   if (!dateStr) return "";
   const m = String(dateStr).match(/(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?/);
   if (!m) return dateStr;
   const y = parseInt(m[1], 10);
   const mo = m[2] ? parseInt(m[2], 10) : null;
   const d = m[3] ? parseInt(m[3], 10) : null;
-  // 令和は 2019-05-01 開始（令和元年=2019）
   if (y < 2019) return dateStr;
   const reiwaY = y - 2018;
   const yStr = reiwaY === 1 ? "元" : String(reiwaY);
@@ -145,7 +136,6 @@ function renderHeader() {
 }
 
 function renderFilters() {
-  // カテゴリ (殺虫殺菌剤は両方にカウント)
   const catDiv = $("#filter-categories");
   const counts = { 殺虫剤: 0, 殺菌剤: 0, 除草剤: 0 };
   for (const p of state.db.products) {
@@ -169,7 +159,6 @@ function renderFilters() {
     })
   );
 
-  // 登録状態
   const statusDiv = $("#filter-statuses");
   const statusCounts = { 有効: 0, 失効: 0 };
   for (const p of state.db.products) {
@@ -192,21 +181,18 @@ function renderFilters() {
     })
   );
 
-  // 家庭向け除外
   $("#filter-household").checked = state.filters.excludeHousehold;
   $("#filter-household").addEventListener("change", e => {
     state.filters.excludeHousehold = e.target.checked;
     updateResults();
   });
 
-  // 混合剤のみ
   $("#filter-mix").checked = state.filters.mixOnly;
   $("#filter-mix").addEventListener("change", e => {
     state.filters.mixOnly = e.target.checked;
     updateResults();
   });
 
-  // 剤型
   const formDiv = $("#filter-formulations");
   const forms = countFormulations(state.db.products);
   formDiv.innerHTML = `<option value="">全て (${state.db.products.length})</option>` +
@@ -218,7 +204,6 @@ function renderFilters() {
     updateResults();
   });
 
-  // 作物 + 病害虫/雑草 (datalist で autocomplete)
   const cropList = $("#crop-suggestions");
   if (cropList && state.cropSuggestions) {
     cropList.innerHTML = state.cropSuggestions
@@ -256,71 +241,101 @@ function updateResults() {
   let results = search(state.currentQuery, state.index);
   results = applyFilters(results, state.filters);
   state.currentResults = results;
-  renderResults(results);
+  state.currentGroups = groupByTypeName(results);
+  renderResults(state.currentGroups, results.length);
 }
 
-function renderResults(results) {
-  resultCount.textContent = `${results.length.toLocaleString()} 件`;
-  if (results.length === 0) {
+function groupByTypeName(products) {
+  const map = new Map();
+  for (const p of products) {
+    const key = p.type_name || p.product_name;
+    let g = map.get(key);
+    if (!g) {
+      g = { type_name: key, products: [] };
+      map.set(key, g);
+    }
+    g.products.push(p);
+  }
+  return [...map.values()];
+}
+
+function renderResults(groups, productCount) {
+  resultCount.textContent = `${groups.length.toLocaleString()} 種類 / ${productCount.toLocaleString()} 商品`;
+  if (groups.length === 0) {
     resultList.innerHTML = `<div class="empty">該当する剤がありません。</div>`;
     return;
   }
   const MAX = 500;
-  const shown = results.slice(0, MAX);
-  resultList.innerHTML = shown.map(renderCard).join("");
-  if (results.length > MAX) {
-    resultList.innerHTML += `<div class="empty" style="padding:20px;">上位 ${MAX} 件を表示。絞り込みで件数を減らしてください。</div>`;
+  const shown = groups.slice(0, MAX);
+  resultList.innerHTML = shown.map(renderGroupCard).join("");
+  if (groups.length > MAX) {
+    resultList.innerHTML += `<div class="empty" style="padding:20px;">上位 ${MAX} 種類を表示。絞り込みで件数を減らしてください。</div>`;
   }
   resultList.querySelectorAll(".result-card").forEach(card =>
-    card.addEventListener("click", () => openDetail(parseInt(card.dataset.reg, 10)))
+    card.addEventListener("click", () => openGroupDetail(card.dataset.tname))
   );
 }
 
-function renderCard(p) {
-  const cats = p.categories || [p.category];
-  const ingBadges = p.ingredients.map(i => {
+function renderGroupCard(g) {
+  const rep = g.products.find(p => p.status !== "失効") || g.products[0];
+  const cats = rep.categories || [rep.category];
+  const ingBadges = rep.ingredients.map(i => {
     return `<span class="badge ingredient">${escapeHtml(i.name)}${racBadgesHtml(i, cats)}</span>`;
   }).join("");
-  const householdBadge = p.household ? `<span class="badge household">家庭向け</span>` : "";
   const catBadges = cats.map(c => `<span class="badge category-${c}">${c}</span>`).join(" ");
-  const isCancelled = p.status === "失効";
-  const statusBadge = isCancelled
-    ? `<span class="badge status-inactive">失効 ${escapeHtml(p.expire_date || "")}</span>`
-    : `<span class="badge status-active">有効</span>`;
+  const activeCount = g.products.filter(p => p.status !== "失効").length;
+  const cancelledCount = g.products.length - activeCount;
+  const statusBadge = (activeCount > 0 ? `<span class="badge status-active">有効 ${activeCount}</span>` : "")
+    + (cancelledCount > 0 ? ` <span class="badge status-inactive">失効 ${cancelledCount}</span>` : "");
+  const isAllCancelled = activeCount === 0;
+  const companies = [...new Set(g.products.map(p => p.company))];
+  const companyText = companies.length <= 3
+    ? companies.join(" / ")
+    : `${companies.slice(0,3).join(" / ")} 他 ${companies.length - 3} 社`;
+  const formCount = new Map();
+  for (const p of g.products) {
+    const k = p.formulation || "(不明)";
+    formCount.set(k, (formCount.get(k) || 0) + 1);
+  }
+  const formText = [...formCount.entries()].slice(0, 3)
+    .map(([k, v]) => formCount.size > 1 ? `${k}(${v})` : k).join(" / ");
+  const sigSet = new Set(g.products.map(p => p.ingredients.map(i => i.name).sort().join("|")));
+  const ingNote = sigSet.size > 1
+    ? ` <span class="badge ingredient-variant" title="この種類名内に ${sigSet.size} パターンの成分構成が含まれます">成分${sigSet.size}変種</span>`
+    : "";
+  const titleMain = stripCompanyFromName(rep.product_name, rep.company);
+  const showTypeSub = g.type_name && g.type_name !== titleMain;
+  const subParts = [];
+  if (showTypeSub) subParts.push(`種類: ${escapeHtml(g.type_name)}`);
+  subParts.push(`${g.products.length} 商品 / ${companies.length} 社`);
   return `
-    <div class="result-card ${isCancelled ? 'cancelled' : ''}" data-reg="${p.reg_no}">
+    <div class="result-card group-card ${isAllCancelled ? 'cancelled' : ''}" data-tname="${escapeHtml(g.type_name)}">
       <div class="result-header">
-        <div class="result-title">${escapeHtml(p.product_name)}</div>
+        <div class="result-title">${escapeHtml(titleMain)}<span class="result-title-sub">${subParts.join(" · ")}</span></div>
         <span>${catBadges} ${statusBadge}</span>
       </div>
       <div class="result-meta">
-        <span>${escapeHtml(p.company)}</span>
-        ${p.formulation ? `<span>·</span><span>${escapeHtml(p.formulation)}</span>` : ""}
-        <span>·</span>
-        <span>第${p.reg_no}号</span>
-        <span>·</span>
-        <span>登録 ${escapeHtml(p.registration_date || "")}</span>
-        ${householdBadge}
+        <span>${escapeHtml(companyText)}</span>
+        ${formText ? `<span>·</span><span>${escapeHtml(formText)}</span>` : ""}
       </div>
-      <div class="result-ingredients">${ingBadges}</div>
+      <div class="result-ingredients">${ingBadges}${ingNote}</div>
     </div>
   `;
 }
 
-async function openDetail(regNo) {
-  const p = state.db.products.find(x => x.reg_no === regNo);
-  if (!p) return;
+async function openGroupDetail(typeName) {
+  const g = state.currentGroups.find(x => x.type_name === typeName);
+  if (!g) return;
 
   detailOverlay.classList.add("open");
   detailContent.innerHTML = `<div class="loading">適用情報を読込中...</div>`;
-
-  // 適用部を読込
   await loadApplications();
-  const apps = getApplicationsFor(regNo) || [];
 
-  const detailCatsArr = p.categories || [p.category];
-  const ingRows = p.ingredients.map(i => {
-    const racEl = racBadgesHtml(i, detailCatsArr);
+  const rep = g.products.find(p => p.status !== "失効") || g.products[0];
+  const cats = rep.categories || [rep.category];
+  const catBadges = cats.map(c => `<span class="badge category-${c}">${c}</span>`).join(" ");
+  const ingRows = rep.ingredients.map(i => {
+    const racEl = racBadgesHtml(i, cats);
     const reason = (!i.rac_code && i.rac_status && i.rac_reason)
       ? ` <span class="rac-reason">(${escapeHtml(i.rac_reason)})</span>` : "";
     return `
@@ -333,8 +348,80 @@ async function openDetail(regNo) {
       </span>
     </div>`;
   }).join("");
+
+  const sortedProducts = [...g.products].sort((a, b) => {
+    if ((a.status === "失効") !== (b.status === "失効")) return a.status === "失効" ? 1 : -1;
+    return (a.registration_date || "").localeCompare(b.registration_date || "");
+  });
+  const productRows = sortedProducts.map(p => `
+    <tr data-reg="${p.reg_no}" class="group-product-row ${p.status === "失効" ? 'cancelled' : ''}">
+      <td>${escapeHtml(p.product_name)}</td>
+      <td>${escapeHtml(p.company)}</td>
+      <td>第${p.reg_no}号</td>
+      <td>${escapeHtml(p.formulation || "")}</td>
+      <td>${p.status === "失効"
+        ? `<span class="badge status-inactive">失効</span>`
+        : `<span class="badge status-active">有効</span>`}</td>
+      <td>${escapeHtml(p.registration_date || "")}</td>
+    </tr>
+  `).join("");
+
+  const companies = [...new Set(g.products.map(p => p.company))];
+  const detailTitleMain = stripCompanyFromName(rep.product_name, rep.company);
+  const showDetailType = g.type_name && g.type_name !== detailTitleMain;
+  detailContent.innerHTML = `
+    <div class="detail-header">
+      <div>
+        <h2 class="detail-title">${escapeHtml(detailTitleMain)}</h2>
+        <div class="detail-title-sub">${showDetailType ? `種類: ${escapeHtml(g.type_name)} · ` : ""}${g.products.length} 商品 / ${companies.length} 社</div>
+        <div class="result-meta">
+          ${catBadges}
+          <span class="badge" title="用途（FAMIC原表記）">${escapeHtml(rep.original_category || "")}</span>
+        </div>
+      </div>
+      <button class="detail-close" aria-label="閉じる">✕</button>
+    </div>
+
+    <div class="detail-section">
+      <h3>共通成分 (${rep.ingredients.length})</h3>
+      ${ingRows}
+    </div>
+
+    <div class="detail-section">
+      <h3>該当商品一覧 (${g.products.length})</h3>
+      <table class="app-table group-products-table">
+        <thead>
+          <tr>
+            <th>商品名 (登録名)</th><th>会社名</th><th>登録番号</th><th>剤型</th><th>状態</th><th>登録年月日</th>
+          </tr>
+        </thead>
+        <tbody>${productRows}</tbody>
+      </table>
+      <p style="font-size:12px; color: var(--text-muted); margin: 6px 0 0;">
+        行をクリックすると、その商品の適用情報 (作物・病害虫・希釈倍数等) が下に表示されます
+      </p>
+    </div>
+
+    <div id="group-product-detail" class="detail-section"></div>
+  `;
+
+  detailContent.querySelector(".detail-close").addEventListener("click", closeDetail);
+  detailContent.querySelectorAll(".group-product-row").forEach(row =>
+    row.addEventListener("click", () => showGroupProductApplications(parseInt(row.dataset.reg, 10)))
+  );
+  showGroupProductApplications(rep.reg_no);
+}
+
+function showGroupProductApplications(regNo) {
+  const p = state.db.products.find(x => x.reg_no === regNo);
+  const target = $("#group-product-detail");
+  if (!target || !p) return;
+  detailContent.querySelectorAll(".group-product-row").forEach(r => {
+    r.classList.toggle("selected", parseInt(r.dataset.reg, 10) === regNo);
+  });
+  const apps = getApplicationsFor(regNo) || [];
   const appTableHtml = apps.length === 0
-    ? `<div class="empty" style="padding:20px;">適用情報なし</div>`
+    ? `<div class="empty" style="padding:20px;">適用情報なし (失効剤には適用情報がありません)</div>`
     : `
       <table class="app-table">
         <thead>
@@ -356,53 +443,18 @@ async function openDetail(regNo) {
         </tbody>
       </table>
     `;
-
-  const detailCats = (p.categories || [p.category])
-    .map(c => `<span class="badge category-${c}">${c}</span>`).join(" ");
-  detailContent.innerHTML = `
-    <div class="detail-header">
-      <div>
-        <h2 class="detail-title">${escapeHtml(p.product_name)}</h2>
-        <div class="result-meta">
-          ${detailCats}
-          <span class="badge" title="用途（FAMIC原表記）">${escapeHtml(p.original_category || "")}</span>
-          <span>${escapeHtml(p.company)}</span>
-          <span>·</span>
-          <span>第${p.reg_no}号</span>
-          <span>·</span>
-          <span>${escapeHtml(p.formulation)}</span>
-          ${p.household ? `<span class="badge household">家庭向け</span>` : ""}
-        </div>
-      </div>
-      <button class="detail-close" aria-label="閉じる">✕</button>
+  target.innerHTML = `
+    <h3>${escapeHtml(p.product_name)} の適用 (${apps.length})</h3>
+    <div class="result-meta" style="margin-bottom: 8px;">
+      <span>${escapeHtml(p.company)}</span><span>·</span>
+      <span>第${p.reg_no}号</span><span>·</span>
+      <span>${escapeHtml(p.formulation || "")}</span><span>·</span>
+      <span>登録 ${escapeHtml(p.registration_date || "")}</span>
+      ${p.expire_date ? `<span>·</span><span>失効 ${escapeHtml(p.expire_date)}</span>` : ""}
+      ${p.household ? `<span class="badge household">家庭向け</span>` : ""}
     </div>
-
-    <div class="detail-section">
-      <h3>基本情報</h3>
-      <div class="detail-field"><span class="label">種類</span><span class="value">${escapeHtml(p.type_name)}</span></div>
-      <div class="detail-field"><span class="label">登録状態</span><span class="value">${
-        p.status === "失効"
-          ? `<span class="badge status-inactive">失効</span>`
-          : `<span class="badge status-active">有効</span>`
-      }</span></div>
-      <div class="detail-field"><span class="label">登録年月日</span><span class="value">${escapeHtml(p.registration_date || "")}</span></div>
-      ${p.expire_date ? `<div class="detail-field"><span class="label">失効年月日</span><span class="value">${escapeHtml(p.expire_date)}</span></div>` : ""}
-      ${p.expire_reason ? `<div class="detail-field"><span class="label">失効理由</span><span class="value">${escapeHtml(p.expire_reason)}</span></div>` : ""}
-      <div class="detail-field"><span class="label">混合数</span><span class="value">${p.mix_count}</span></div>
-    </div>
-
-    <div class="detail-section">
-      <h3>有効成分 (${p.ingredients.length})</h3>
-      ${ingRows}
-    </div>
-
-    <div class="detail-section">
-      <h3>適用 (${apps.length})</h3>
-      ${appTableHtml}
-    </div>
+    ${appTableHtml}
   `;
-
-  detailContent.querySelector(".detail-close").addEventListener("click", closeDetail);
 }
 
 function closeDetail() {
@@ -418,7 +470,6 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-// イベント登録
 let debounceTimer = null;
 searchInput.addEventListener("input", e => {
   clearTimeout(debounceTimer);
@@ -440,7 +491,6 @@ document.addEventListener("keydown", e => {
   }
 });
 
-// エクスポート
 $("#export-tsv").addEventListener("click", () =>
   download(`pesticides_${new Date().toISOString().slice(0,10)}.tsv`, exportTSV(state.currentResults), "text/tab-separated-values")
 );

@@ -54,6 +54,51 @@ export function expandSearchableCrops(crop) {
 }
 
 /**
+ * 会社名と商品名を比較し、商品名の頭から会社略称プレフィックスを除いた名称を返す。
+ * 1) 既知略称マップ (日農/ホクコー/カヤク等) を優先
+ * 2) 会社名から「株式会社」等を除いた根の頭一致を試す (2 文字以上)
+ * 除去結果が空になる場合は元の商品名を返す。
+ */
+const COMPANY_ALIAS_MAP = {
+  "日本農薬株式会社": ["日農", "日本農薬"],
+  "北興化学工業株式会社": ["ホクコー", "北興化学"],
+  "日本化薬株式会社": ["日本化薬", "カヤク"],
+  "大日本除蟲菊株式会社": ["金鳥", "大日本除蟲菊"],
+  "バイエルクロップサイエンス株式会社": ["バイエル"],
+  "シンジェンタ ジャパン株式会社": ["シンジェンタ"],
+  "日産化学株式会社": ["日産化学", "日産"],
+  "住友化学株式会社": ["住友化学", "住友"],
+  "三井化学クロップ&ライフソリューション株式会社": ["三井東圧", "三井"],
+  "クミアイ化学工業株式会社": ["クミアイ化学", "クミアイ"],
+  "三共株式会社": ["三共"],
+  "北海三共株式会社": ["北海三共"],
+  "九州三共株式会社": ["九州三共"],
+  "石原産業株式会社": ["石原産業", "石原"],
+  "協友アグリ株式会社": ["協友"],
+};
+
+export function stripCompanyFromName(productName, company) {
+  if (!productName) return productName || "";
+  const name = String(productName);
+  const comp = String(company || "");
+  for (const alias of (COMPANY_ALIAS_MAP[comp] || [])) {
+    if (alias && name.startsWith(alias)) {
+      const rest = name.slice(alias.length).trim();
+      if (rest) return rest;
+    }
+  }
+  const root = comp.replace(/(株式会社|合同会社|有限会社|協同組合|農業協同組合連合会)/g, "").trim();
+  for (let n = root.length; n >= 2; n--) {
+    const prefix = root.slice(0, n);
+    if (name.startsWith(prefix)) {
+      const rest = name.slice(n).trim();
+      if (rest) return rest;
+    }
+  }
+  return name;
+}
+
+/**
  * RACコード文字列を IRAC / FRAC / HRAC 別に分類。
  * - 複合表記: "UN(I*), M2(F*)" のように (I*)/(F*)/(H*) タグ付き → タグで振り分け
  * - 単独コード: categories から推定 (殺虫剤→I, 殺菌剤→F, 除草剤→H)

@@ -19,9 +19,10 @@ function escapeCsv(s) {
 }
 
 export function exportTSV(products) {
-  const header = ["登録番号", "商品名", "会社名", "用途", "剤型", "成分", "混合数", "登録年月日"];
+  const header = ["登録番号", "種類名", "商品名(登録名)", "会社名", "用途", "剤型", "成分", "混合数", "登録年月日"];
   const rows = products.map(p => [
     p.reg_no,
+    p.type_name,
     p.product_name,
     p.company,
     (p.categories || [p.category]).join("+"),
@@ -34,9 +35,10 @@ export function exportTSV(products) {
 }
 
 export function exportCSV(products) {
-  const header = ["登録番号", "商品名", "会社名", "用途", "剤型", "成分", "混合数", "登録年月日"];
+  const header = ["登録番号", "種類名", "商品名(登録名)", "会社名", "用途", "剤型", "成分", "混合数", "登録年月日"];
   const rows = products.map(p => [
     p.reg_no,
+    p.type_name,
     p.product_name,
     p.company,
     (p.categories || [p.category]).join("+"),
@@ -50,12 +52,12 @@ export function exportCSV(products) {
 
 export function exportMarkdown(products) {
   const lines = [
-    "| 登録番号 | 商品名 | 会社名 | 用途 | 剤型 | 成分 |",
-    "|---|---|---|---|---|---|",
+    "| 登録番号 | 種類名 | 商品名(登録名) | 会社名 | 用途 | 剤型 | 成分 |",
+    "|---|---|---|---|---|---|---|",
   ];
   for (const p of products) {
     lines.push(
-      `| ${p.reg_no} | ${p.product_name} | ${p.company} | ${p.category} | ${p.formulation} | ${flattenIngredients(p.ingredients)} |`
+      `| ${p.reg_no} | ${p.type_name} | ${p.product_name} | ${p.company} | ${(p.categories||[p.category]).join("+")} | ${p.formulation} | ${flattenIngredients(p.ingredients)} |`
     );
   }
   return lines.join("\n");
