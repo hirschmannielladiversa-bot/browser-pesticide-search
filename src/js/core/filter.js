@@ -2,6 +2,7 @@
  * フィルタリング
  * - 用途カテゴリ (殺虫剤/殺菌剤/除草剤)
  * - 家庭向け除外
+ * - 屋号付き (同一処方の代理店/OEM品) 除外
  * - 剤型マルチセレクト
  * - 混合剤のみ
  */
@@ -12,6 +13,7 @@ export const DEFAULT_FILTERS = {
   categories: new Set(["殺虫剤", "殺菌剤", "除草剤"]),
   statuses: new Set(["有効", "失効"]),  // デフォルト両方表示
   excludeHousehold: true,
+  excludeBranded: true,  // 屋号付き (同一処方の代理店/OEM品) を除外
   formulations: null,  // null = すべて
   mixOnly: false,
   crop: "",    // 作物名 (部分一致)
@@ -27,6 +29,7 @@ export function applyFilters(products, filters) {
     if (!cats.some(c => filters.categories.has(c))) return false;
     if (filters.statuses && !filters.statuses.has(p.status || "有効")) return false;
     if (filters.excludeHousehold && p.household) return false;
+    if (filters.excludeBranded && p._branded) return false;
     if (filters.formulations && !filters.formulations.has(p.formulation)) return false;
     if (filters.mixOnly && p.ingredients.length < 2) return false;
     // 作物と病害虫を同時指定した場合は「同一適用行」での共起を要求する。

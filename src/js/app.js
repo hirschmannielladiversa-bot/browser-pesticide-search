@@ -70,6 +70,7 @@ async function init() {
 
     const apps = await loadApplications();
     attachCropsPests(state.db.products, apps);
+    attachBrandedFlags(state.db.products);
     state.index = buildIndex(state.db.products, apps);
     renderHeader();
     renderFilters();
@@ -119,6 +120,33 @@ function attachCropsPests(products, applications) {
   }
   state.cropSuggestions = [...cropCount.entries()].sort((a, b) => b[1] - a[1]);
   state.pestSuggestions = [...pestCount.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+/**
+ * 「屋号付き」商品 (同一処方・同一種類名の中で、他社の商品名をそのまま含む形の
+ * 代理店/OEM 品) を検出し、p._branded に真偽値を立てる。
+ * 例: 種類名+成分構成が同じグループ内で "クミアイダコニール1000" は
+ *     "ダコニール1000" (同グループの別商品) を末尾に含む → 屋号付きと判定。
+ * どの商品も他の商品名を含まないグループは何も除外しない (誤除外を避けるため)。
+ */
+function attachBrandedFlags(products) {
+  const groups = new Map();
+  for (const p of products) {
+    const key = `${p.type_name || p.product_name}${ingredientSignature(p)}`;
+    let g = groups.get(key);
+    if (!g) { g = []; groups.set(key, g); }
+    g.push(p);
+  }
+  for (const g of groups.values()) {
+    for (const p of g) {
+      p._branded = g.some(q =>
+        q !== p &&
+        p.product_name !== q.product_name &&
+        p.product_name.length > q.product_name.length &&
+        p.product_name.endsWith(q.product_name)
+      );
+    }
+  }
 }
 
 function toReiwa(dateStr) {
@@ -216,6 +244,12 @@ function renderFilters() {
   $("#filter-household").checked = state.filters.excludeHousehold;
   $("#filter-household").addEventListener("change", e => {
     state.filters.excludeHousehold = e.target.checked;
+    updateResults();
+  });
+
+  $("#filter-branded").checked = state.filters.excludeBranded;
+  $("#filter-branded").addEventListener("change", e => {
+    state.filters.excludeBranded = e.target.checked;
     updateResults();
   });
 
