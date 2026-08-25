@@ -273,17 +273,33 @@ function updateResults() {
   let results = search(state.currentQuery, state.index, state.racSystem, state.searchMode);
   results = applyFilters(results, state.filters);
   state.currentResults = results;
-  state.currentGroups = groupByTypeName(results);
+  state.currentGroups = groupByTypeAndIngredients(results);
   renderResults(state.currentGroups, results.length);
 }
 
-function groupByTypeName(products) {
+/** 成分構成 (成分名 + 濃度) の署名。同一種類名でも濃度違いは別グループにするために使う */
+function ingredientSignature(p) {
+  return (p.ingredients || [])
+    .map(i => `${i.name}\u001f${i.density || ""}`)
+    .sort()
+    .join("\u001e");
+}
+
+/**
+ * 種類名 + 成分構成 (成分名・濃度) でグループ化する。
+ * 種類名だけだと、ダコニール1000 (TPN 40%) / ダコニールエース (53%) /
+ * ダコニールアルファ (82.5%) が同じ「TPN水和剤」に統合され、代表 1 件しか
+ * 一覧に出なくなるため。会社違いの同一処方 (クミアイダコニール1000 等) は
+ * 従来どおり 1 グループにまとまる。
+ */
+function groupByTypeAndIngredients(products) {
   const map = new Map();
   for (const p of products) {
-    const key = p.type_name || p.product_name;
+    const typeName = p.type_name || p.product_name;
+    const key = `${typeName}\u001d${ingredientSignature(p)}`;
     let g = map.get(key);
     if (!g) {
-      g = { type_name: key, products: [] };
+      g = { type_name: typeName, products: [] };
       map.set(key, g);
     }
     g.products.push(p);
@@ -304,11 +320,11 @@ function renderResults(groups, productCount) {
     resultList.innerHTML += `<div class="empty" style="padding:20px;">上位 ${MAX} 種類を表示。絞り込みで件数を減らしてください。</div>`;
   }
   resultList.querySelectorAll(".result-card").forEach(card =>
-    card.addEventListener("click", () => openGroupDetail(card.dataset.tname))
+    card.addEventListener("click", () => openGroupDetail(Number(card.dataset.gidx)))
   );
 }
 
-function renderGroupCard(g) {
+function renderGroupCard(g, idx) {
   const rep = g.products.find(p => p.status !== "失効") || g.products[0];
   // グループ内の全商品のカテゴリを和集合 (殺虫殺菌両用剤や混在グループの正確な表示)
   const catOrder = ["殺虫剤", "殺菌剤", "除草剤"];
@@ -337,17 +353,13 @@ function renderGroupCard(g) {
   }
   const formText = [...formCount.entries()].slice(0, 3)
     .map(([k, v]) => formCount.size > 1 ? `${k}(${v})` : k).join(" / ");
-  const sigSet = new Set(g.products.map(p => p.ingredients.map(i => i.name).sort().join("|")));
-  const ingNote = sigSet.size > 1
-    ? ` <span class="badge ingredient-variant" title="この種類名内に ${sigSet.size} パターンの成分構成が含まれます">成分${sigSet.size}変種</span>`
-    : "";
   const titleMain = stripCompanyFromName(rep.product_name, rep.company);
   const showTypeSub = g.type_name && g.type_name !== titleMain;
   const subParts = [];
   if (showTypeSub) subParts.push(`種類: ${escapeHtml(g.type_name)}`);
   subParts.push(`${g.products.length} 商品 / ${companies.length} 社`);
   return `
-    <div class="result-card group-card ${isAllCancelled ? 'cancelled' : ''}" data-tname="${escapeHtml(g.type_name)}">
+    <div class="result-card group-card ${isAllCancelled ? 'cancelled' : ''}" data-gidx="${idx}">
       <div class="result-header">
         <div class="result-title">${escapeHtml(titleMain)}<span class="result-title-sub">${subParts.join(" · ")}</span></div>
         <span>${catBadges} ${statusBadge}</span>
@@ -356,13 +368,13 @@ function renderGroupCard(g) {
         <span>${escapeHtml(companyText)}</span>
         ${formText ? `<span>·</span><span>${escapeHtml(formText)}</span>` : ""}
       </div>
-      <div class="result-ingredients">${ingBadges}${ingNote}</div>
+      <div class="result-ingredients">${ingBadges}</div>
     </div>
   `;
 }
 
-async function openGroupDetail(typeName) {
-  const g = state.currentGroups.find(x => x.type_name === typeName);
+async function openGroupDetail(groupIdx) {
+  const g = state.currentGroups[groupIdx];
   if (!g) return;
 
   detailOverlay.classList.add("open");
